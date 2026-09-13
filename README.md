@@ -1,6 +1,6 @@
 # Quackity For QDucks
 
-Custom QDucks Discord bot. `/updserver` previews or applies the complete QDucks HQ structure without duplicating or deleting manual content.
+Custom QDucks Discord bot. `/updserver` previews or applies the complete public QDucks community and private company HQ without duplicating or deleting manual content.
 
 ## Phone setup
 
