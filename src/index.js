@@ -4,10 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Client, GatewayIntentBits, ChannelType, PermissionFlagsBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
 import { VERSION, roles, categories, overwrites } from './blueprint.js';
+import { featureCommands, installFeatures } from './features.js';
 
 const required = ['DISCORD_TOKEN'];
 for (const key of required) if (!process.env[key]) throw new Error(`Missing secret: ${key}`);
-const client = new Client({ intents:[GatewayIntentBits.Guilds] });
+const client = new Client({ intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent] });
 const locks = new Set();
 let lastSync = null;
 const dataDir = path.resolve('data'), stateFile = path.join(dataDir,'state.json');
@@ -19,7 +20,7 @@ const command = new SlashCommandBuilder().setName('updserver').setDescription('P
 async function register() {
   const appId = process.env.DISCORD_CLIENT_ID || client.user.id;
   const rest = new REST({version:'10'}).setToken(process.env.DISCORD_TOKEN);
-  const body=[command.toJSON()];
+  const body=[command.toJSON(),...featureCommands.map(c=>c.toJSON())];
   if(process.env.DISCORD_GUILD_ID) await rest.put(Routes.applicationGuildCommands(appId,process.env.DISCORD_GUILD_ID),{body});
   else await rest.put(Routes.applicationCommands(appId),{body});
 }
@@ -90,6 +91,7 @@ client.on('interactionCreate',async i=>{
   const apply=i.options.getBoolean('confirm')===true; locks.add(i.guildId); await i.deferReply({ephemeral:true});
   try {const r=await syncGuild(i.guild,apply);lastSync={at:new Date().toISOString(),mode:apply?'applied':'preview',counts:Object.fromEntries(Object.entries(r).map(([k,v])=>[k,v.length]))}; const lines=Object.entries(r).map(([k,v])=>`**${k}: ${v.length}**${v.length?`\n${v.slice(0,12).map(x=>`• ${x}`).join('\n')}${v.length>12?`\n• …and ${v.length-12} more`:''}`:''}`); await i.editReply(`${apply?'✅ Update finished':'🔎 Dry run only — nothing changed'}\nBlueprint v${VERSION}\n\n${lines.join('\n\n')}\n\n${apply?'':'Run `/updserver confirm:true` to apply.'}`.slice(0,1950));} catch(e){await i.editReply(`Update failed safely: ${e.message}`);} finally{locks.delete(i.guildId);}
 });
+installFeatures(client);
 client.once('ready',async()=>{console.log(`Quackity online as ${client.user.tag}`);await register();});
 
 const app=express(); app.get('/health',(req,res)=>res.json({ok:true,discord:client.isReady(),blueprintVersion:VERSION,lastSync})); app.get('/',(req,res)=>res.send(`<main style="font-family:system-ui;max-width:650px;margin:60px auto;padding:20px"><h1>🦆 Quackity For QDucks</h1><p>${client.isReady()?'✅ Discord bot online':'⏳ Connecting to Discord'}</p><p>Blueprint version: ${VERSION}</p><p>Use <b>/updserver</b> in QDucks HQ.</p></main>`)); app.listen(process.env.PORT||3000);
