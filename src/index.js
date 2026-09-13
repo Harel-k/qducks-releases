@@ -25,6 +25,22 @@ async function register() {
 }
 const canRun = i => i.memberPermissions?.has(PermissionFlagsBits.Administrator) || (process.env.OWNER_USER_ID && i.user.id===process.env.OWNER_USER_ID);
 
+const textIcon = name => {
+  if (name.includes('・')) return name;
+  const rules = [
+    [/announcement|news|updates|releases/, '📢'], [/rules/, '📜'], [/calendar|schedule/, '📅'],
+    [/roadmap/, '🗺️'], [/directory|employee|staff-management/, '👥'], [/meeting|agenda|notes/, '📝'],
+    [/action|tasks|completed/, '✅'], [/vote|poll|analytics|reports/, '📊'], [/document|files|assets|records/, '📁'],
+    [/bug|problem|reports/, '🐛'], [/test/, '🧪'], [/idea|suggestion/, '💡'], [/application|inquiries/, '📨'],
+    [/github|links/, '🔗'], [/design|thumbnail|creations/, '🎨'], [/media/, '📸'], [/video|editing/, '🎬'],
+    [/partner/, '🤝'], [/help|support|appeals/, '🛟'], [/giveaway/, '🎁'], [/welcome|introduction/, '👋'],
+    [/role/, '🎭'], [/bot/, '🤖'], [/security|moderation|logs/, '🔐'], [/release/, '🚀'],
+    [/chat|discussion|general/, '💬'], [/planning|projects/, '📋']
+  ];
+  return `${rules.find(([r])=>r.test(name))?.[1] || '💬'}・${name}`;
+};
+const voiceIcon = name => /AFK/i.test(name) ? `💤 ${name}` : /Meeting|Office|Board|Room/i.test(name) ? `🔊 ${name}` : `🎙️ ${name}`;
+
 async function syncGuild(guild, apply) {
   const report={created:[],updated:[],unchanged:[],skipped:[],warnings:[],errors:[]};
   const state=loadState(); state.guilds[guild.id] ||= {roles:{},categories:{},channels:{}}; const gs=state.guilds[guild.id];
@@ -40,17 +56,25 @@ async function syncGuild(guild, apply) {
       roleMap.set(spec.name,role); gs.roles[spec.name]=role.id;
     } catch(e){report.errors.push(`role ${spec.name}: ${e.message}`);}
   }
-  for(const cat of categories) {
+  if(apply){
+    let target=Math.max(1,me.roles.highest.position-1);
+    for(const spec of roles){const role=roleMap.get(spec.name);if(role&&role.editable){try{await role.setPosition(target--,{reason:`Quackity blueprint v${VERSION} role order`});}catch(e){report.warnings.push(`Could not position role ${spec.name}: ${e.message}`);}}}
+    report.updated.push('managed role order');
+  } else report.updated.push('managed role order');
+  for(const [catIndex,cat] of categories.entries()) {
     try {
       let parent=gs.categories[cat.name] && guild.channels.cache.get(gs.categories[cat.name]);
       parent ||= guild.channels.cache.find(c=>c.type===ChannelType.GuildCategory&&c.name===cat.name);
       if(!parent) { if(!apply){report.created.push(`category ${cat.name}`);} else {parent=await guild.channels.create({name:cat.name,type:ChannelType.GuildCategory,permissionOverwrites:overwrites(guild,roleMap,cat.access),reason:`Quackity blueprint v${VERSION}`});report.created.push(`category ${cat.name}`);} }
-      else { if(apply) await parent.permissionOverwrites.set(overwrites(guild,roleMap,cat.access),`Quackity blueprint v${VERSION}`); report.unchanged.push(`category ${cat.name}`); }
+      else { if(apply) {await parent.permissionOverwrites.set(overwrites(guild,roleMap,cat.access),`Quackity blueprint v${VERSION}`);await parent.setPosition(catIndex,{reason:`Quackity blueprint v${VERSION} category order`});} report.updated.push(`category permissions/order ${cat.name}`); }
       if(parent) gs.categories[cat.name]=parent.id;
-      for(const [kind,names] of [['text',cat.text],['voice',cat.voice]]) for(const name of names){
+      for(const [kind,names] of [['text',cat.text],['voice',cat.voice]]) for(const [channelIndex,name] of names.entries()){
         const key=`${cat.name}/${kind}/${name}`; const type=kind==='text'?ChannelType.GuildText:ChannelType.GuildVoice;
-        let ch=gs.channels[key]&&guild.channels.cache.get(gs.channels[key]); ch ||= guild.channels.cache.find(c=>c.parentId===parent?.id&&c.type===type&&c.name===name);
-        if(!ch){if(!apply){report.created.push(`${kind} ${name}`);continue;} ch=await guild.channels.create({name,type,parent:parent.id,reason:`Quackity blueprint v${VERSION}`});report.created.push(`${kind} ${name}`);} else report.unchanged.push(`${kind} ${name}`);
+        const desired=kind==='text'?textIcon(name):voiceIcon(name);
+        let ch=gs.channels[key]&&guild.channels.cache.get(gs.channels[key]);
+        ch ||= guild.channels.cache.find(c=>c.parentId===parent?.id&&c.type===type&&(c.name===desired||c.name===name));
+        if(!ch){if(!apply){report.created.push(`${kind} ${desired}`);continue;} ch=await guild.channels.create({name:desired,type,parent:parent.id,position:channelIndex,reason:`Quackity blueprint v${VERSION}`});report.created.push(`${kind} ${desired}`);}
+        else {const changed=ch.name!==desired||ch.parentId!==parent?.id||ch.position!==channelIndex;if(apply&&changed)await ch.edit({name:desired,parent:parent.id,position:channelIndex,reason:`Quackity blueprint v${VERSION} style/order`});(changed?report.updated:report.unchanged).push(`${kind} ${desired}`);}
         gs.channels[key]=ch.id;
       }
     } catch(e){report.errors.push(`${cat.name}: ${e.message}`);}
