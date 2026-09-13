@@ -1,6 +1,6 @@
 import { PermissionFlagsBits } from 'discord.js';
 
-export const VERSION = 2;
+export const VERSION = 3;
 export const roles = [
   ['CEO', 0xF1C40F], ['Co-CEO', 0xF7DC6F], ['COO', 0xE67E22],
   ['CTO', 0x3498DB], ['CMO', 0xE91E63], ['Chief of Staff', 0x9B59B6],
